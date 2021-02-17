@@ -1,0 +1,18 @@
+[package]
+name = "randbats-winrates"
+version = "0.1.1"
+authors = ["Annika <annika0uwu@gmail.com>"]
+license = "MIT"
+description = "Tool to determine winrates for Pokémon Showdown random battles"
+homepage = "https://github.com/AnnikaCodes/randbats-winrates"
+repository = "https://github.com/AnnikaCodes/randbats-winrates"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+indexmap = "1.6.1"
+itertools = "0.10.0"
+pikkr-annika = "0.16.1"
+prettytable-rs = "0.8.0"
+structopt = "0.3.21"
