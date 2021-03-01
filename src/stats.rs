@@ -131,6 +131,10 @@ impl<'a> Stats<'a> {
             String::from("Unown")
         } else if species == "Gastrodon-East" {
             String::from("Gastrodon")
+        } else if species == "Magearna-Original" {
+            String::from("Magearna")
+        } else if species == "Genesect-Douse" {
+            String::from("Genesect")
         } else if species == "Basculin-Blue-Striped" {
             String::from("Basculin")
         } else if species.starts_with("Sawsbuck-") {
@@ -143,8 +147,10 @@ impl<'a> Stats<'a> {
             String::from("Furfrou")
         } else if species.starts_with("Minior-") {
             String::from("Minior")
-        } else if species == "Magearna-Original" {
-            String::from("Magearna")
+        } else if species.starts_with("Gourgeist-") {
+            String::from("Gourgeist")
+        } else if species.starts_with("Toxtricity-") {
+            String::from("Toxtricity")
         } else {
             species.to_string()
         }
