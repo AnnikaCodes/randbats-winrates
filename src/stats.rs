@@ -125,32 +125,32 @@ impl<'a> Stats<'a> {
     }
 
     fn normalize_species(species: &str) -> String {
-        if species.starts_with("Pikachu-") {
-            String::from("Pikachu")
-        } else if species.starts_with("Unown-") {
-            String::from("Unown")
-        } else if species == "Gastrodon-East" {
-            String::from("Gastrodon")
-        } else if species == "Magearna-Original" {
-            String::from("Magearna")
-        } else if species == "Genesect-Douse" {
-            String::from("Genesect")
-        } else if species == "Basculin-Blue-Striped" {
-            String::from("Basculin")
-        } else if species.starts_with("Sawsbuck-") {
-            String::from("Sawsbuck")
-        } else if species.starts_with("Vivillon-") {
-            String::from("Vivillon")
-        } else if species.starts_with("Florges-") {
-            String::from("Florges")
-        } else if species.starts_with("Furfrou-") {
-            String::from("Furfrou")
-        } else if species.starts_with("Minior-") {
-            String::from("Minior")
-        } else if species.starts_with("Gourgeist-") {
-            String::from("Gourgeist")
-        } else if species.starts_with("Toxtricity-") {
-            String::from("Toxtricity")
+        if species.starts_with("\"Pikachu-") {
+            String::from("\"Pikachu\"")
+        } else if species.starts_with("\"Unown-") {
+            String::from("\"Unown\"")
+        } else if species == "\"Gastrodon-East" {
+            String::from("Gastrodon\"")
+        } else if species == "\"Magearna-Original" {
+            String::from("\"Magearna\"")
+        } else if species == "\"Genesect-Douse" {
+            String::from("\"Genesect\"")
+        } else if species == "\"Basculin-Blue-Striped" {
+            String::from("\"Basculin\"")
+        } else if species.starts_with("\"Sawsbuck-") {
+            String::from("\"Sawsbuck\"")
+        } else if species.starts_with("\"Vivillon-") {
+            String::from("\"Vivillon\"")
+        } else if species.starts_with("\"Florges-") {
+            String::from("\"Florges\"")
+        } else if species.starts_with("\"Furfrou-") {
+            String::from("\"Furfrou\"")
+        } else if species.starts_with("\"Minior-") {
+            String::from("\"Minior\"")
+        } else if species.starts_with("\"Gourgeist-") {
+            String::from("\"Gourgeist\"")
+        } else if species.starts_with("\"Toxtricity-") {
+            String::from("\"Toxtricity\"")
         } else {
             species.to_string()
         }
