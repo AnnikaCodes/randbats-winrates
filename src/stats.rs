@@ -9,6 +9,13 @@ pub trait Output {
     fn to_csv(&mut self) -> String;
 }
 
+#[derive(Copy, Clone)]
+struct FinalStats {
+    /// as percentage
+    winrate: f32,
+    deviations: f32,
+}
+
 #[derive(Debug)]
 pub enum StatsError {
     Team(String),
@@ -42,9 +49,15 @@ struct PokemonStats {
 }
 
 impl PokemonStats {
-    // Approximate winrate * 10000
-    fn winrate(&self) -> u32 {
-        (self.wins * 10000) / self.games
+    /// Computes the number of standard deviations from the average
+    fn final_stats(&self) -> FinalStats {
+        let games = self.games as f32;
+        let winrate = (self.wins as f32 / games) * 100.0;
+
+        // Standard deviations formula courtesy of pyuk (@pyuk-bot on GitHub)
+        let deviations = (winrate - 50.0) * games.sqrt() / 50.0;
+
+        FinalStats { winrate, deviations }
     }
 }
 
@@ -69,7 +82,7 @@ impl<'a> Stats<'a> {
 
     pub fn sort(&mut self) {
         if !self.is_sorted {
-            self.pokemon.sort_by(|_, a, _, b| b.winrate().cmp(&a.winrate()));
+            self.pokemon.sort_by(|_, a, _, b| b.final_stats().deviations.partial_cmp(&a.final_stats().deviations).unwrap());
         }
     }
 
@@ -164,11 +177,13 @@ impl<'a> Output for Stats<'a> {
         self.pokemon
             .iter()
             .map(|(pokemon, stats)| {
+                let fstats = stats.final_stats();
                 [
                     pokemon.to_string(),
                     stats.games.to_string(),
                     stats.wins.to_string(),
-                    (stats.winrate() as f32 / 100.0).to_string(),
+                    fstats.winrate.to_string(),
+                    fstats.deviations.to_string()
                 ].join(",")
             })
             .intersperse(String::from("\n"))
@@ -176,16 +191,19 @@ impl<'a> Output for Stats<'a> {
     }
 
     fn to_human_readable(&mut self) -> String {
-        let mut table = table!(["Rank", "Pokemon", "Winrate", "Games", "Wins"]);
+        let mut table = table!(["Rank", "Pokemon", "Deviations", "Winrate", "Games", "Wins"]);
         let mut cur_rank = 1;
 
         self.sort();
 
         for (pokemon, stats) in &self.pokemon {
-            let mut winrate = (stats.winrate() as f32 / 100.0).to_string();
+            let fstats = stats.final_stats();
+
+            let deviations = fstats.deviations.to_string();
+            let mut winrate = fstats.winrate.to_string();
             winrate.push('%');
 
-            table.add_row(row![cur_rank, pokemon.as_str()[1..pokemon.len() - 1], winrate, stats.games, stats.wins]);
+            table.add_row(row![cur_rank, pokemon.as_str()[1..pokemon.len() - 1], deviations, winrate, stats.games, stats.wins]);
             cur_rank += 1;
         }
 
