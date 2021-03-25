@@ -28,6 +28,9 @@ struct Options {
     #[structopt(short = "h", long = "human-output")]
     #[structopt(parse(from_os_str))]
     human_readable_output_path: Option<PathBuf>,
+
+    #[structopt(long = "exclude")]
+    exclusion: Option<String>,
 }
 
 fn main() -> Result<(), StatsError> {
@@ -55,7 +58,17 @@ fn main() -> Result<(), StatsError> {
     for entry in fs::read_dir(options.format_dir)? {
         let path = entry?.path();
         if path.is_dir() {
-            println!("Analyzing {}...", path.file_name().unwrap().to_str().unwrap_or(""));
+            let name = path.file_name().unwrap().to_str().unwrap_or("");
+            let should_ignore = match options.exclusion {
+                Some(ref x) => name.contains(x),
+                None => false
+            };
+            if should_ignore {
+                println!("Ignoring {}", name);
+                continue;
+            }
+
+            println!("Analyzing {}...", name);
             for file in fs::read_dir(path)? {
                 let battle_json_path = file?.path();
                 let filename = battle_json_path.to_str().unwrap_or("");
