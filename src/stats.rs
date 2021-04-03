@@ -148,7 +148,7 @@ impl<'a> Stats<'a> {
             String::from("\"Magearna\"")
         } else if species == "\"Genesect-Douse" {
             String::from("\"Genesect\"")
-        } else if species == "\"Basculin-Blue-Striped" {
+        } else if species.starts_with("\"Basculin-") {
             String::from("\"Basculin\"")
         } else if species.starts_with("\"Sawsbuck-") {
             String::from("\"Sawsbuck\"")
