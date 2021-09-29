@@ -1,13 +1,16 @@
+#![feature(test)]
+
 /// Program to generate winrates for Pokémon Showdown Random Battles
 ///
 /// Written by Annika
 /// Adapted from The Immortal's JavaScript winrate program, improved by Marty
 
 mod stats;
-use stats::*;
+pub use stats::*;
 use std::fs;
 use std::path::PathBuf;
 use structopt::StructOpt;
+
 
 const PIKKR_TRAINING_ROUNDS: usize = 2;
 
@@ -78,7 +81,7 @@ fn main() -> Result<(), StatsError> {
 
                 let data = fs::read_to_string(battle_json_path)?;
                 let json = json_parser.parse(data.as_bytes()).unwrap();
-                stats.process_json(json)?;
+                stats.process_json(&json)?;
             }
         }
     }
@@ -94,3 +97,4 @@ fn main() -> Result<(), StatsError> {
 
     Ok(())
 }
+

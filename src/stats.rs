@@ -1,5 +1,5 @@
 /// Stats code
-
+extern  crate test;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use prettytable::*;
@@ -61,6 +61,11 @@ impl PokemonStats {
     }
 }
 
+pub struct GameResult {
+    species: String,
+    won: bool,
+}
+
 /// Stores overall statistics
 pub struct Stats<'a> {
     /// Pokemon:statistics map
@@ -86,55 +91,71 @@ impl<'a> Stats<'a> {
         }
     }
 
-    pub fn process_json(&mut self, json: Vec<Option<&[u8]>>) -> Result<(), StatsError> {
-        self.is_sorted = false; // we're adding data so it isn't sorted anymore
+    pub fn process_json(&self, json: &Vec<Option<&[u8]>>) -> Result<Vec<GameResult>, StatsError> {
+        // TODO: handle
+        //
 
         // ELO check
         for elo_bytes in [json[0], json[3]].iter() {
             if let Some(rating) = elo_bytes {
                 match String::from_utf8_lossy(rating).parse::<f64>() {
                     Ok(n) => {
-                        if (n as u64) < self.min_elo { return Ok(()); }
+                        if (n as u64) < self.min_elo { return Ok(vec![]); }
                     },
                     Err(_) => {
-                        return Ok(());
+                        return Ok(vec![]);
                     },
                 };
             } else {
-                return Ok(());
+                return Ok(vec![]);
             }
         }
 
+        let mut results = vec![];
+
+        let mut json_parser = pikkr_annika::Pikkr::new(&vec!["$.species".as_bytes()], crate::PIKKR_TRAINING_ROUNDS).unwrap();
         // see src/main.rs:44 for documentation on these magic numbers
         // (indices of parsed JSON)
         for team_idx in [1, 4].iter() {
             // json[16] = the winner
-            let wins = if json[6] == json[team_idx + 1] { 1 } else { 0 };
+            let won = json[6] == json[team_idx + 1];
 
             let team_json = match json[*team_idx] {
                 Some(team_bytes) => String::from_utf8_lossy(team_bytes),
                 None => continue,
             };
             for pkmn_json in team_json.strip_prefix("[{").unwrap().strip_suffix("}]").unwrap().split("},{") {
-                let species = match self.team_json_parser.parse(&["{", pkmn_json, "}"].join(""))?.get(0) {
+                let species = match json_parser.parse(&["{", pkmn_json, "}"].join(""))?.get(0) {
                     Some(s) => match s {
                         Some(bytes) => Stats::normalize_species(&String::from_utf8_lossy(bytes)),
                         None => continue,
                     }
                     None => continue,
                 };
-                match self.pokemon.get_mut(&species) {
-                    Some(s) => {
-                        s.wins += wins;
-                        s.games += 1;
-                    },
-                    None => {
-                        self.pokemon.insert(species, PokemonStats { games: 1, wins });
-                    }
-                };
+                results.push(GameResult { species, won });
             }
         }
-        Ok(())
+        Ok(results)
+    }
+
+    fn add_game_results(&mut self, results: Vec<GameResult>) {
+        if results.is_empty() {
+            return;
+        }
+
+        self.is_sorted = false; // we're adding data so it isn't sorted anymore
+        for result in results {
+            let wins = if result.won { 1 } else { 0 };
+            match self.pokemon.get_mut(&result.species) {
+                Some(s) => {
+                    s.wins += wins;
+                    s.games += 1;
+                },
+                None => {
+                    self.pokemon.insert(result.species, PokemonStats { games: 1, wins });
+                }
+            };
+        }
     }
 
     fn normalize_species(species: &str) -> String {
@@ -208,5 +229,59 @@ impl<'a> Output for Stats<'a> {
         }
 
         table.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        static ref SAMPLE_JSON: Vec<Option<&'static [u8]>> = vec![
+            Some("1100".as_bytes()),
+            Some(r#"[{"name":"gallant's pear","species":"Orbeetle","item":"Life Orb","ability":"Armor Time","moves":["Bug Buzz","Nasty Plot","Snipe Shot","King Giri Giri Slash"],"nature":"Timid","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":0,"spd":0,"spe":252},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Akir","species":"Forretress","item":"Leftovers","ability":"Fortifications","moves":["Stealth Rock","Rapid Spin","U-turn","Ravelin"],"nature":"Impish","gender":"M","evs":{"hp":248,"atk":0,"def":252,"spa":0,"spd":0,"spe":8},"ivs":{"hp":31,"atk":31,"def":31,"spa":0,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"brouha","species":"Mantine","item":"Leftovers","ability":"Turbulence","moves":["Scald","Recover","Haze","Kinetosis"],"nature":"Calm","gender":"M","evs":{"hp":248,"atk":0,"def":8,"spa":0,"spd":252,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Kalalokki","species":"Wingull","item":"Kalalokkium Z","ability":"Magic Guard","moves":["Tailwind","Healing Wish","Encore","Blackbird"],"nature":"Timid","gender":"M","evs":{"hp":0,"atk":0,"def":0,"spa":252,"spd":4,"spe":252},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"OM~!","species":"Glastrier","item":"Heavy Duty Boots","ability":"Filter","moves":["Stealth Rock","Recover","Earthquake","OM Zoom"],"nature":"Relaxed","gender":"M","evs":{"hp":252,"atk":0,"def":252,"spa":0,"spd":4,"spe":0},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":0},"level":100,"happiness":255,"shiny":false},{"name":"vivalospride","species":"Darmanitan-Zen","item":"Heavy Duty Boots","ability":"Regenerator","moves":["Teleport","Toxic","Future Sight","DRIP BAYLESS"],"nature":"Modest","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":252,"spd":0,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false}]"#.as_bytes()),
+            Some("annika".as_bytes()),
+            Some("1400".as_bytes()),
+            Some(r#"[{"name":"gallant's pear","species":"Orbeetle","item":"Life Orb","ability":"Armor Time","moves":["Bug Buzz","Nasty Plot","Snipe Shot","King Giri Giri Slash"],"nature":"Timid","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":0,"spd":0,"spe":252},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Akir","species":"Forretress","item":"Leftovers","ability":"Fortifications","moves":["Stealth Rock","Rapid Spin","U-turn","Ravelin"],"nature":"Impish","gender":"M","evs":{"hp":248,"atk":0,"def":252,"spa":0,"spd":0,"spe":8},"ivs":{"hp":31,"atk":31,"def":31,"spa":0,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"brouha","species":"Mantine","item":"Leftovers","ability":"Turbulence","moves":["Scald","Recover","Haze","Kinetosis"],"nature":"Calm","gender":"M","evs":{"hp":248,"atk":0,"def":8,"spa":0,"spd":252,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Kalalokki","species":"Wingull","item":"Kalalokkium Z","ability":"Magic Guard","moves":["Tailwind","Healing Wish","Encore","Blackbird"],"nature":"Timid","gender":"M","evs":{"hp":0,"atk":0,"def":0,"spa":252,"spd":4,"spe":252},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"OM~!","species":"Glastrier","item":"Heavy Duty Boots","ability":"Filter","moves":["Stealth Rock","Recover","Earthquake","OM Zoom"],"nature":"Relaxed","gender":"M","evs":{"hp":252,"atk":0,"def":252,"spa":0,"spd":4,"spe":0},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":0},"level":100,"happiness":255,"shiny":false},{"name":"vivalospride","species":"Darmanitan-Zen","item":"Heavy Duty Boots","ability":"Regenerator","moves":["Teleport","Toxic","Future Sight","DRIP BAYLESS"],"nature":"Modest","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":252,"spd":0,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false}]"#.as_bytes()),
+            Some("rust haters".as_bytes()),
+            Some("annika".as_bytes()),
+        ];
+    }
+
+    #[bench]
+    pub fn process_json(b: &mut Bencher) {
+        let stats = Stats::new(1050);
+        b.iter(|| stats.process_json(&SAMPLE_JSON));
+    }
+
+    #[bench]
+    pub fn process_and_add_json(b: &mut Bencher) {
+        let mut stats = Stats::new(1050);
+        b.iter(|| {
+            let s = stats.process_json(&SAMPLE_JSON).unwrap();
+            stats.add_game_results(s);
+        });
+    }
+
+
+    #[bench]
+    pub fn to_csv_10k(b: &mut Bencher) {
+        let mut stats = Stats::new(1050);
+        for _ in 1..10000 {
+            let s = stats.process_json(&SAMPLE_JSON).unwrap();
+            stats.add_game_results(s);
+        }
+        b.iter(|| stats.to_csv());
+    }
+
+    #[bench]
+    pub fn to_prettytable_10k(b: &mut Bencher) {
+        let mut stats = Stats::new(1050);
+        for _ in 1..10000 {
+            stats.process_json(&SAMPLE_JSON).unwrap();
+        }
+        b.iter(|| stats.to_human_readable());
     }
 }
