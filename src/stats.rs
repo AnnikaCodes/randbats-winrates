@@ -1,5 +1,5 @@
 /// Stats code
-extern  crate test;
+extern crate test;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use prettytable::*;
@@ -61,27 +61,26 @@ impl PokemonStats {
     }
 }
 
+#[derive(Debug)]
 pub struct GameResult {
     species: String,
     won: bool,
 }
 
 /// Stores overall statistics
-pub struct Stats<'a> {
+pub struct Stats {
     /// Pokemon:statistics map
     pokemon: IndexMap<String, PokemonStats>,
     min_elo: u64,
     is_sorted: bool,
-    team_json_parser: pikkr_annika::Pikkr<'a>,
 }
 
-impl<'a> Stats<'a> {
+impl Stats {
     pub fn new(min_elo: u64) -> Self {
         Self {
             min_elo,
             pokemon: IndexMap::new(),
             is_sorted: false,
-            team_json_parser: pikkr_annika::Pikkr::new(&vec!["$.species".as_bytes()], crate::PIKKR_TRAINING_ROUNDS).unwrap(),
         }
     }
 
@@ -92,9 +91,6 @@ impl<'a> Stats<'a> {
     }
 
     pub fn process_json(&self, json: &Vec<Option<&[u8]>>) -> Result<Vec<GameResult>, StatsError> {
-        // TODO: handle
-        //
-
         // ELO check
         for elo_bytes in [json[0], json[3]].iter() {
             if let Some(rating) = elo_bytes {
@@ -138,7 +134,7 @@ impl<'a> Stats<'a> {
         Ok(results)
     }
 
-    fn add_game_results(&mut self, results: Vec<GameResult>) {
+    pub fn add_game_results(&mut self, results: Vec<GameResult>) {
         if results.is_empty() {
             return;
         }
@@ -191,7 +187,7 @@ impl<'a> Stats<'a> {
     }
 }
 
-impl<'a> Output for Stats<'a> {
+impl Output for Stats {
     fn to_csv(&mut self) -> String {
         self.sort();
 
@@ -258,13 +254,13 @@ mod tests {
     }
 
     #[bench]
-    pub fn process_json(b: &mut Bencher) {
+    pub fn bench_process_json(b: &mut Bencher) {
         let stats = Stats::new(1050);
         b.iter(|| stats.process_json(&SAMPLE_JSON));
     }
 
     #[bench]
-    pub fn process_and_add_json(b: &mut Bencher) {
+    pub fn bench_process_and_add_json(b: &mut Bencher) {
         let mut stats = Stats::new(1050);
         b.iter(|| {
             let s = stats.process_json(&SAMPLE_JSON).unwrap();
@@ -274,14 +270,14 @@ mod tests {
 
 
     #[bench]
-    pub fn to_csv_10k(b: &mut Bencher) {
+    pub fn bench_to_csv_10k(b: &mut Bencher) {
         let mut stats = Stats::new(1050);
         add_records(&mut stats, 10000);
         b.iter(|| stats.to_csv());
     }
 
     #[bench]
-    pub fn to_prettytable_10k(b: &mut Bencher) {
+    pub fn bench_to_prettytable_10k(b: &mut Bencher) {
         let mut stats = Stats::new(1050);
         add_records(&mut stats, 10000);
         b.iter(|| stats.to_human_readable());
