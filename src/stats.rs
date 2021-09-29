@@ -250,6 +250,13 @@ mod tests {
         ];
     }
 
+    fn add_records(stats: &mut Stats, num: u32) {
+        for _ in 0..num {
+            let s = stats.process_json(&SAMPLE_JSON).unwrap();
+            stats.add_game_results(s);
+        }
+    }
+
     #[bench]
     pub fn process_json(b: &mut Bencher) {
         let stats = Stats::new(1050);
@@ -269,19 +276,14 @@ mod tests {
     #[bench]
     pub fn to_csv_10k(b: &mut Bencher) {
         let mut stats = Stats::new(1050);
-        for _ in 1..10000 {
-            let s = stats.process_json(&SAMPLE_JSON).unwrap();
-            stats.add_game_results(s);
-        }
+        add_records(&mut stats, 10000);
         b.iter(|| stats.to_csv());
     }
 
     #[bench]
     pub fn to_prettytable_10k(b: &mut Bencher) {
         let mut stats = Stats::new(1050);
-        for _ in 1..10000 {
-            stats.process_json(&SAMPLE_JSON).unwrap();
-        }
+        add_records(&mut stats, 10000);
         b.iter(|| stats.to_human_readable());
     }
 }
