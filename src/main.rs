@@ -60,7 +60,7 @@ fn handle_directory(
 
             println!("Analyzing {}...", name);
             fs::read_dir(path)?
-                .collect::<Vec<std::io::Result<fs::DirEntry>>>()
+                .collect::<Vec<_>>()
                 .par_iter()
                 .filter_map(|file| {
                     let mut json_parser = pikkr_annika::Pikkr::new(
