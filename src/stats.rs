@@ -42,7 +42,7 @@ impl From<pikkr_annika::Error> for StatsError {
 }
 
 /// Stores statistics about a pokemon
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct PokemonStats {
     games: u32,
     wins: u32,
@@ -68,6 +68,7 @@ pub struct GameResult {
 }
 
 /// Stores overall statistics
+#[derive(Debug)]
 pub struct Stats {
     /// Pokemon:statistics map
     pokemon: IndexMap<String, PokemonStats>,
@@ -90,13 +91,13 @@ impl Stats {
         }
     }
 
-    pub fn process_json(&self, json: &Vec<Option<&[u8]>>) -> Result<Vec<GameResult>, StatsError> {
+    pub fn process_json(min_elo: u64, json: &Vec<Option<&[u8]>>) -> Result<Vec<GameResult>, StatsError> {
         // ELO check
         for elo_bytes in [json[0], json[3]].iter() {
             if let Some(rating) = elo_bytes {
                 match String::from_utf8_lossy(rating).parse::<f64>() {
                     Ok(n) => {
-                        if (n as u64) < self.min_elo { return Ok(vec![]); }
+                        if (n as u64) < min_elo { return Ok(vec![]); }
                     },
                     Err(_) => {
                         return Ok(vec![]);
@@ -191,7 +192,7 @@ impl Output for Stats {
     fn to_csv(&mut self) -> String {
         self.sort();
 
-        self.pokemon
+        Itertools::intersperse(self.pokemon
             .iter()
             .map(|(pokemon, stats)| {
                 let fstats = stats.final_stats();
@@ -202,9 +203,9 @@ impl Output for Stats {
                     fstats.winrate.to_string(),
                     fstats.deviations.to_string()
                 ].join(",")
-            })
-            .intersperse(String::from("\n"))
-            .collect()
+            }),
+            String::from("\n")
+        ).collect()
     }
 
     fn to_human_readable(&mut self) -> String {
@@ -248,22 +249,21 @@ mod tests {
 
     fn add_records(stats: &mut Stats, num: u32) {
         for _ in 0..num {
-            let s = stats.process_json(&SAMPLE_JSON).unwrap();
+            let s = Stats::process_json(1050, &SAMPLE_JSON).unwrap();
             stats.add_game_results(s);
         }
     }
 
     #[bench]
     pub fn bench_process_json(b: &mut Bencher) {
-        let stats = Stats::new(1050);
-        b.iter(|| stats.process_json(&SAMPLE_JSON));
+        b.iter(|| Stats::process_json(1050, &SAMPLE_JSON));
     }
 
     #[bench]
     pub fn bench_process_and_add_json(b: &mut Bencher) {
         let mut stats = Stats::new(1050);
         b.iter(|| {
-            let s = stats.process_json(&SAMPLE_JSON).unwrap();
+            let s = Stats::process_json(1050, &SAMPLE_JSON).unwrap();
             stats.add_game_results(s);
         });
     }

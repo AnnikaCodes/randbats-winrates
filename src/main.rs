@@ -10,7 +10,9 @@ mod stats;
 pub use stats::*;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex};
 use structopt::StructOpt;
+use rayon::prelude::*;
 
 
 const PIKKR_TRAINING_ROUNDS: usize = 2;
@@ -38,19 +40,8 @@ struct Options {
 }
 
 fn handle_directory(min_elo: u64, format_dir: &PathBuf, exclusion: Option<String>) -> Result<stats::Stats, stats::StatsError> {
-    let mut s = Stats::new(min_elo);
-
-    let mut json_parser = pikkr_annika::Pikkr::new(&vec![
-        "$.p1rating.elo".as_bytes(), // p1 elo - idx 0
-        "$.p1team".as_bytes(), // p1 team - idx 1
-        "$.p1".as_bytes(), // p1 name - idx 2
-
-        "$.p2rating.elo".as_bytes(), // p2 elo - idx 3
-        "$.p2team".as_bytes(), // p2 team - idx 4
-        "$.p2".as_bytes(), // p2 name - idx 5
-
-        "$.winner".as_bytes(), // winner - idx 6
-    ], PIKKR_TRAINING_ROUNDS)?;
+    let mut stats = Stats::new(min_elo);
+    let stats_mutex = Mutex::new(&mut stats);
 
     for entry in fs::read_dir(format_dir)? {
         let path = entry?.path();
@@ -66,22 +57,39 @@ fn handle_directory(min_elo: u64, format_dir: &PathBuf, exclusion: Option<String
             }
 
             println!("Analyzing {}...", name);
-            for file in fs::read_dir(path)? {
-                let battle_json_path = file?.path();
-                let filename = battle_json_path.to_str().unwrap_or("");
-                if !filename.ends_with(".json") {
-                    continue;
-                }
+            fs::read_dir(path)?
+                .collect::<Vec<std::io::Result<fs::DirEntry>>>()
+                .par_iter()
+                .filter_map(|file| {
+                    let mut json_parser = pikkr_annika::Pikkr::new(&vec![
+                        "$.p1rating.elo".as_bytes(), // p1 elo - idx 0
+                        "$.p1team".as_bytes(), // p1 team - idx 1
+                        "$.p1".as_bytes(), // p1 name - idx 2
 
-                let data = fs::read_to_string(battle_json_path)?;
-                let json = json_parser.parse(data.as_bytes()).unwrap();
-                let res = s.process_json(&json)?;
-                s.add_game_results(res);
-            }
+                        "$.p2rating.elo".as_bytes(), // p2 elo - idx 3
+                        "$.p2team".as_bytes(), // p2 team - idx 4
+                        "$.p2".as_bytes(), // p2 name - idx 5
+
+                        "$.winner".as_bytes(), // winner - idx 6
+                    ], PIKKR_TRAINING_ROUNDS).unwrap();
+
+                    let battle_json_path = file.as_ref().expect(format!("error opening file").as_str()).path();
+                    let filename = battle_json_path.to_str().unwrap_or("");
+                    if !filename.ends_with(".json") {
+                        return None;
+                    }
+
+                    let data = fs::read_to_string(&battle_json_path).expect(format!("error reading file {}", filename).as_str());
+                    let json = json_parser.parse(data.as_bytes()).unwrap();
+                    Some(Stats::process_json(min_elo, &json).expect(format!("error processing JSON in {}", filename).as_str()))
+                })
+                .for_each(|res| {
+                    stats_mutex.lock().unwrap().add_game_results(res);
+                });
         }
     }
 
-    Ok(s)
+    Ok(stats)
 }
 
 fn main() -> Result<(), StatsError> {
