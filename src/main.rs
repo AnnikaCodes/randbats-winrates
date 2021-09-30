@@ -4,16 +4,14 @@
 ///
 /// Written by Annika
 /// Adapted from The Immortal's JavaScript winrate program, improved by Marty
-
 extern crate test;
 mod stats;
+use rayon::prelude::*;
 pub use stats::*;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex};
+use std::sync::Mutex;
 use structopt::StructOpt;
-use rayon::prelude::*;
-
 
 const PIKKR_TRAINING_ROUNDS: usize = 2;
 
@@ -39,8 +37,12 @@ struct Options {
     exclusion: Option<String>,
 }
 
-fn handle_directory(min_elo: u64, format_dir: &PathBuf, exclusion: Option<String>) -> Result<stats::Stats, stats::StatsError> {
-    let mut stats = Stats::new(min_elo);
+fn handle_directory(
+    min_elo: u64,
+    format_dir: &PathBuf,
+    exclusion: Option<String>,
+) -> Result<stats::Stats, stats::StatsError> {
+    let mut stats = Stats::new();
     let stats_mutex = Mutex::new(&mut stats);
 
     for entry in fs::read_dir(format_dir)? {
@@ -49,7 +51,7 @@ fn handle_directory(min_elo: u64, format_dir: &PathBuf, exclusion: Option<String
             let name = path.file_name().unwrap().to_str().unwrap_or("");
             let should_ignore = match exclusion {
                 Some(ref x) => name.contains(x),
-                None => false
+                None => false,
             };
             if should_ignore {
                 println!("Ignoring {}", name);
@@ -61,27 +63,36 @@ fn handle_directory(min_elo: u64, format_dir: &PathBuf, exclusion: Option<String
                 .collect::<Vec<std::io::Result<fs::DirEntry>>>()
                 .par_iter()
                 .filter_map(|file| {
-                    let mut json_parser = pikkr_annika::Pikkr::new(&vec![
-                        "$.p1rating.elo".as_bytes(), // p1 elo - idx 0
-                        "$.p1team".as_bytes(), // p1 team - idx 1
-                        "$.p1".as_bytes(), // p1 name - idx 2
+                    let mut json_parser = pikkr_annika::Pikkr::new(
+                        &vec![
+                            "$.p1rating.elo".as_bytes(), // p1 elo - idx 0
+                            "$.p1team".as_bytes(),       // p1 team - idx 1
+                            "$.p1".as_bytes(),           // p1 name - idx 2
+                            "$.p2rating.elo".as_bytes(), // p2 elo - idx 3
+                            "$.p2team".as_bytes(),       // p2 team - idx 4
+                            "$.p2".as_bytes(),           // p2 name - idx 5
+                            "$.winner".as_bytes(),       // winner - idx 6
+                        ],
+                        PIKKR_TRAINING_ROUNDS,
+                    )
+                    .unwrap();
 
-                        "$.p2rating.elo".as_bytes(), // p2 elo - idx 3
-                        "$.p2team".as_bytes(), // p2 team - idx 4
-                        "$.p2".as_bytes(), // p2 name - idx 5
-
-                        "$.winner".as_bytes(), // winner - idx 6
-                    ], PIKKR_TRAINING_ROUNDS).unwrap();
-
-                    let battle_json_path = file.as_ref().expect(format!("error opening file").as_str()).path();
+                    let battle_json_path = file
+                        .as_ref()
+                        .expect(format!("error opening file").as_str())
+                        .path();
                     let filename = battle_json_path.to_str().unwrap_or("");
                     if !filename.ends_with(".json") {
                         return None;
                     }
 
-                    let data = fs::read_to_string(&battle_json_path).expect(format!("error reading file {}", filename).as_str());
+                    let data = fs::read_to_string(&battle_json_path)
+                        .expect(format!("error reading file {}", filename).as_str());
                     let json = json_parser.parse(data.as_bytes()).unwrap();
-                    Some(Stats::process_json(min_elo, &json).expect(format!("error processing JSON in {}", filename).as_str()))
+                    Some(
+                        Stats::process_json(min_elo, &json)
+                            .expect(format!("error processing JSON in {}", filename).as_str()),
+                    )
                 })
                 .for_each(|res| {
                     stats_mutex.lock().unwrap().add_game_results(res);
@@ -116,9 +127,9 @@ fn main() -> Result<(), StatsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use test::Bencher;
     use lazy_static::lazy_static;
     use std::fs;
+    use test::Bencher;
 
     lazy_static! {
         static ref TEST_DIR: PathBuf = PathBuf::from("target/test/day1");

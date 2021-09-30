@@ -57,7 +57,10 @@ impl PokemonStats {
         // Standard deviations formula courtesy of pyuk (@pyuk-bot on GitHub)
         let deviations = (winrate - 50.0) * games.sqrt() / 50.0;
 
-        FinalStats { winrate, deviations }
+        FinalStats {
+            winrate,
+            deviations,
+        }
     }
 }
 
@@ -72,14 +75,12 @@ pub struct GameResult {
 pub struct Stats {
     /// Pokemon:statistics map
     pokemon: IndexMap<String, PokemonStats>,
-    min_elo: u64,
     is_sorted: bool,
 }
 
 impl Stats {
-    pub fn new(min_elo: u64) -> Self {
+    pub fn new() -> Self {
         Self {
-            min_elo,
             pokemon: IndexMap::new(),
             is_sorted: false,
         }
@@ -87,21 +88,31 @@ impl Stats {
 
     pub fn sort(&mut self) {
         if !self.is_sorted {
-            self.pokemon.sort_by(|_, a, _, b| b.final_stats().deviations.partial_cmp(&a.final_stats().deviations).unwrap());
+            self.pokemon.sort_by(|_, a, _, b| {
+                b.final_stats()
+                    .deviations
+                    .partial_cmp(&a.final_stats().deviations)
+                    .unwrap()
+            });
         }
     }
 
-    pub fn process_json(min_elo: u64, json: &Vec<Option<&[u8]>>) -> Result<Vec<GameResult>, StatsError> {
+    pub fn process_json(
+        min_elo: u64,
+        json: &Vec<Option<&[u8]>>,
+    ) -> Result<Vec<GameResult>, StatsError> {
         // ELO check
         for elo_bytes in [json[0], json[3]].iter() {
             if let Some(rating) = elo_bytes {
                 match String::from_utf8_lossy(rating).parse::<f64>() {
                     Ok(n) => {
-                        if (n as u64) < min_elo { return Ok(vec![]); }
-                    },
+                        if (n as u64) < min_elo {
+                            return Ok(vec![]);
+                        }
+                    }
                     Err(_) => {
                         return Ok(vec![]);
-                    },
+                    }
                 };
             } else {
                 return Ok(vec![]);
@@ -110,7 +121,9 @@ impl Stats {
 
         let mut results = vec![];
 
-        let mut json_parser = pikkr_annika::Pikkr::new(&vec!["$.species".as_bytes()], crate::PIKKR_TRAINING_ROUNDS).unwrap();
+        let mut json_parser =
+            pikkr_annika::Pikkr::new(&vec!["$.species".as_bytes()], crate::PIKKR_TRAINING_ROUNDS)
+                .unwrap();
         // see src/main.rs:44 for documentation on these magic numbers
         // (indices of parsed JSON)
         for team_idx in [1, 4].iter() {
@@ -121,12 +134,18 @@ impl Stats {
                 Some(team_bytes) => String::from_utf8_lossy(team_bytes),
                 None => continue,
             };
-            for pkmn_json in team_json.strip_prefix("[{").unwrap().strip_suffix("}]").unwrap().split("},{") {
+            for pkmn_json in team_json
+                .strip_prefix("[{")
+                .unwrap()
+                .strip_suffix("}]")
+                .unwrap()
+                .split("},{")
+            {
                 let species = match json_parser.parse(&["{", pkmn_json, "}"].join(""))?.get(0) {
                     Some(s) => match s {
                         Some(bytes) => Stats::normalize_species(&String::from_utf8_lossy(bytes)),
                         None => continue,
-                    }
+                    },
                     None => continue,
                 };
                 results.push(GameResult { species, won });
@@ -147,9 +166,10 @@ impl Stats {
                 Some(s) => {
                     s.wins += wins;
                     s.games += 1;
-                },
+                }
                 None => {
-                    self.pokemon.insert(result.species, PokemonStats { games: 1, wins });
+                    self.pokemon
+                        .insert(result.species, PokemonStats { games: 1, wins });
                 }
             };
         }
@@ -192,20 +212,21 @@ impl Output for Stats {
     fn to_csv(&mut self) -> String {
         self.sort();
 
-        Itertools::intersperse(self.pokemon
-            .iter()
-            .map(|(pokemon, stats)| {
+        Itertools::intersperse(
+            self.pokemon.iter().map(|(pokemon, stats)| {
                 let fstats = stats.final_stats();
                 [
                     pokemon.to_string(),
                     stats.games.to_string(),
                     stats.wins.to_string(),
                     fstats.winrate.to_string(),
-                    fstats.deviations.to_string()
-                ].join(",")
+                    fstats.deviations.to_string(),
+                ]
+                .join(",")
             }),
-            String::from("\n")
-        ).collect()
+            String::from("\n"),
+        )
+        .collect()
     }
 
     fn to_human_readable(&mut self) -> String {
@@ -221,7 +242,14 @@ impl Output for Stats {
             let mut winrate = fstats.winrate.to_string();
             winrate.push('%');
 
-            table.add_row(row![cur_rank, pokemon.as_str()[1..pokemon.len() - 1], deviations, winrate, stats.games, stats.wins]);
+            table.add_row(row![
+                cur_rank,
+                pokemon.as_str()[1..pokemon.len() - 1],
+                deviations,
+                winrate,
+                stats.games,
+                stats.wins
+            ]);
             cur_rank += 1;
         }
 
@@ -232,8 +260,8 @@ impl Output for Stats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use test::Bencher;
     use lazy_static::lazy_static;
+    use test::Bencher;
 
     lazy_static! {
         static ref SAMPLE_JSON: Vec<Option<&'static [u8]>> = vec![
@@ -261,24 +289,23 @@ mod tests {
 
     #[bench]
     pub fn bench_process_and_add_json(b: &mut Bencher) {
-        let mut stats = Stats::new(1050);
+        let mut stats = Stats::new();
         b.iter(|| {
             let s = Stats::process_json(1050, &SAMPLE_JSON).unwrap();
             stats.add_game_results(s);
         });
     }
 
-
     #[bench]
     pub fn bench_to_csv_10k(b: &mut Bencher) {
-        let mut stats = Stats::new(1050);
+        let mut stats = Stats::new();
         add_records(&mut stats, 10000);
         b.iter(|| stats.to_csv());
     }
 
     #[bench]
     pub fn bench_to_prettytable_10k(b: &mut Bencher) {
-        let mut stats = Stats::new(1050);
+        let mut stats = Stats::new();
         add_records(&mut stats, 10000);
         b.iter(|| stats.to_human_readable());
     }
