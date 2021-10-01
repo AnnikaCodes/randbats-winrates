@@ -13,8 +13,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use structopt::StructOpt;
 
-const PIKKR_TRAINING_ROUNDS: usize = 2;
-
 #[derive(StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 struct Options {
@@ -63,20 +61,6 @@ fn handle_directory(
                 .collect::<Vec<_>>()
                 .par_iter()
                 .filter_map(|file| {
-                    let mut json_parser = pikkr_annika::Pikkr::new(
-                        &vec![
-                            "$.p1rating.elo".as_bytes(), // p1 elo - idx 0
-                            "$.p1team".as_bytes(),       // p1 team - idx 1
-                            "$.p1".as_bytes(),           // p1 name - idx 2
-                            "$.p2rating.elo".as_bytes(), // p2 elo - idx 3
-                            "$.p2team".as_bytes(),       // p2 team - idx 4
-                            "$.p2".as_bytes(),           // p2 name - idx 5
-                            "$.winner".as_bytes(),       // winner - idx 6
-                        ],
-                        PIKKR_TRAINING_ROUNDS,
-                    )
-                    .unwrap();
-
                     let battle_json_path = file
                         .as_ref()
                         .expect(format!("error opening file").as_str())
@@ -86,9 +70,8 @@ fn handle_directory(
                         return None;
                     }
 
-                    let data = fs::read_to_string(&battle_json_path)
+                    let json = fs::read_to_string(&battle_json_path)
                         .expect(format!("error reading file {}", filename).as_str());
-                    let json = json_parser.parse(data.as_bytes()).unwrap();
                     Some(
                         Stats::process_json(min_elo, &json)
                             .expect(format!("error processing JSON in {}", filename).as_str()),
@@ -162,18 +145,18 @@ mod tests {
 
         assert_eq!(
             stats.to_csv(),
-            "\"Rotom-Fan\",1000,1000,100,31.622776
-\"Regirock\",1000,1000,100,31.622776
-\"Conkeldurr\",1000,1000,100,31.622776
-\"Reuniclus\",1000,1000,100,31.622776
-\"Incineroar\",1000,1000,100,31.622776
-\"Miltank\",1000,1000,100,31.622776
-\"Drednaw\",1000,0,0,-31.622776
-\"Pinsir\",1000,0,0,-31.622776
-\"Pikachu\",1000,0,0,-31.622776
-\"Latios\",1000,0,0,-31.622776
-\"Entei\",1000,0,0,-31.622776
-\"Exeggutor-Alola\",1000,0,0,-31.622776"
+            "Rotom-Fan,1000,1000,100,31.622776
+Regirock,1000,1000,100,31.622776
+Conkeldurr,1000,1000,100,31.622776
+Reuniclus,1000,1000,100,31.622776
+Incineroar,1000,1000,100,31.622776
+Miltank,1000,1000,100,31.622776
+Drednaw,1000,0,0,-31.622776
+Pinsir,1000,0,0,-31.622776
+Pikachu,1000,0,0,-31.622776
+Latios,1000,0,0,-31.622776
+Entei,1000,0,0,-31.622776
+Exeggutor-Alola,1000,0,0,-31.622776"
         );
         assert_eq!(
             stats.to_human_readable(),

@@ -20,7 +20,6 @@ struct FinalStats {
 pub enum StatsError {
     Team(String),
     IO(std::io::Error),
-    JSON(pikkr_annika::Error),
 }
 
 impl From<String> for StatsError {
@@ -35,11 +34,11 @@ impl From<std::io::Error> for StatsError {
     }
 }
 
-impl From<pikkr_annika::Error> for StatsError {
-    fn from(err: pikkr_annika::Error) -> StatsError {
-        StatsError::JSON(err)
-    }
-}
+// impl From<pikkr_annika::Error> for StatsError {
+//     fn from(err: pikkr_annika::Error) -> StatsError {
+//         StatsError::JSON(err)
+//     }
+// }
 
 /// Stores statistics about a pokemon
 #[derive(Copy, Clone, Debug)]
@@ -99,56 +98,26 @@ impl Stats {
 
     pub fn process_json(
         min_elo: u64,
-        json: &Vec<Option<&[u8]>>,
+        json: &str,
     ) -> Result<Vec<GameResult>, StatsError> {
         // ELO check
-        for elo_bytes in [json[0], json[3]].iter() {
-            if let Some(rating) = elo_bytes {
-                match String::from_utf8_lossy(rating).parse::<f64>() {
-                    Ok(n) => {
-                        if (n as u64) < min_elo {
-                            return Ok(vec![]);
-                        }
-                    }
-                    Err(_) => {
-                        return Ok(vec![]);
-                    }
-                };
-            } else {
+        for elo_property in ["p1rating.elo", "p2rating.elo"].iter() {
+            if (gjson::get(json, elo_property).f32() as u64) < min_elo {
+                // ignore
                 return Ok(vec![]);
             }
         }
 
         let mut results = vec![];
 
-        let mut json_parser =
-            pikkr_annika::Pikkr::new(&vec!["$.species".as_bytes()], crate::PIKKR_TRAINING_ROUNDS)
-                .unwrap();
-        // see src/main.rs:44 for documentation on these magic numbers
         // (indices of parsed JSON)
-        for team_idx in [1, 4].iter() {
+        for (species_list_property, player_property) in [("p1team.#.species", "p1"), ("p2team.#.species", "p2")].iter() {
             // json[16] = the winner
-            let won = json[6] == json[team_idx + 1];
+            let won = gjson::get(json, player_property) == gjson::get(json, "winner");
 
-            let team_json = match json[*team_idx] {
-                Some(team_bytes) => String::from_utf8_lossy(team_bytes),
-                None => continue,
-            };
-            for pkmn_json in team_json
-                .strip_prefix("[{")
-                .unwrap()
-                .strip_suffix("}]")
-                .unwrap()
-                .split("},{")
-            {
-                let species = match json_parser.parse(&["{", pkmn_json, "}"].join(""))?.get(0) {
-                    Some(s) => match s {
-                        Some(bytes) => Stats::normalize_species(&String::from_utf8_lossy(bytes)),
-                        None => continue,
-                    },
-                    None => continue,
-                };
-                results.push(GameResult { species, won });
+            let species_list = gjson::get(json, species_list_property);
+            for species in species_list.array() {
+                results.push(GameResult { species: Stats::normalize_species(species.str()), won });
             }
         }
         Ok(results)
@@ -176,32 +145,32 @@ impl Stats {
     }
 
     fn normalize_species(species: &str) -> String {
-        if species.starts_with("\"Pikachu-") {
-            String::from("\"Pikachu\"")
-        } else if species.starts_with("\"Unown-") {
-            String::from("\"Unown\"")
-        } else if species == "\"Gastrodon-East" {
-            String::from("Gastrodon\"")
-        } else if species == "\"Magearna-Original" {
-            String::from("\"Magearna\"")
-        } else if species == "\"Genesect-Douse" {
-            String::from("\"Genesect\"")
-        } else if species.starts_with("\"Basculin-") {
-            String::from("\"Basculin\"")
-        } else if species.starts_with("\"Sawsbuck-") {
-            String::from("\"Sawsbuck\"")
-        } else if species.starts_with("\"Vivillon-") {
-            String::from("\"Vivillon\"")
-        } else if species.starts_with("\"Florges-") {
-            String::from("\"Florges\"")
-        } else if species.starts_with("\"Furfrou-") {
-            String::from("\"Furfrou\"")
-        } else if species.starts_with("\"Minior-") {
-            String::from("\"Minior\"")
-        } else if species.starts_with("\"Gourgeist-") {
-            String::from("\"Gourgeist\"")
-        } else if species.starts_with("\"Toxtricity-") {
-            String::from("\"Toxtricity\"")
+        if species.starts_with("Pikachu-") {
+            String::from("Pikachu")
+        } else if species.starts_with("Unown-") {
+            String::from("Unown")
+        } else if species == "Gastrodon-East" {
+            String::from("Gastrodon")
+        } else if species == "Magearna-Original" {
+            String::from("Magearna")
+        } else if species == "Genesect-Douse" {
+            String::from("Genesect")
+        } else if species.starts_with("Basculin-") {
+            String::from("Basculin")
+        } else if species.starts_with("Sawsbuck-") {
+            String::from("Sawsbuck")
+        } else if species.starts_with("Vivillon-") {
+            String::from("Vivillon")
+        } else if species.starts_with("Florges-") {
+            String::from("Florges")
+        } else if species.starts_with("Furfrou-") {
+            String::from("Furfrou")
+        } else if species.starts_with("Minior-") {
+            String::from("Minior")
+        } else if species.starts_with("Gourgeist-") {
+            String::from("Gourgeist")
+        } else if species.starts_with("Toxtricity-") {
+            String::from("Toxtricity")
         } else {
             species.to_string()
         }
@@ -244,7 +213,7 @@ impl Output for Stats {
 
             table.add_row(row![
                 cur_rank,
-                pokemon.as_str()[1..pokemon.len() - 1],
+                pokemon,
                 deviations,
                 winrate,
                 stats.games,
@@ -264,15 +233,7 @@ mod tests {
     use test::Bencher;
 
     lazy_static! {
-        static ref SAMPLE_JSON: Vec<Option<&'static [u8]>> = vec![
-            Some("1100".as_bytes()),
-            Some(r#"[{"name":"gallant's pear","species":"Orbeetle","item":"Life Orb","ability":"Armor Time","moves":["Bug Buzz","Nasty Plot","Snipe Shot","King Giri Giri Slash"],"nature":"Timid","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":0,"spd":0,"spe":252},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Akir","species":"Forretress","item":"Leftovers","ability":"Fortifications","moves":["Stealth Rock","Rapid Spin","U-turn","Ravelin"],"nature":"Impish","gender":"M","evs":{"hp":248,"atk":0,"def":252,"spa":0,"spd":0,"spe":8},"ivs":{"hp":31,"atk":31,"def":31,"spa":0,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"brouha","species":"Mantine","item":"Leftovers","ability":"Turbulence","moves":["Scald","Recover","Haze","Kinetosis"],"nature":"Calm","gender":"M","evs":{"hp":248,"atk":0,"def":8,"spa":0,"spd":252,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Kalalokki","species":"Wingull","item":"Kalalokkium Z","ability":"Magic Guard","moves":["Tailwind","Healing Wish","Encore","Blackbird"],"nature":"Timid","gender":"M","evs":{"hp":0,"atk":0,"def":0,"spa":252,"spd":4,"spe":252},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"OM~!","species":"Glastrier","item":"Heavy Duty Boots","ability":"Filter","moves":["Stealth Rock","Recover","Earthquake","OM Zoom"],"nature":"Relaxed","gender":"M","evs":{"hp":252,"atk":0,"def":252,"spa":0,"spd":4,"spe":0},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":0},"level":100,"happiness":255,"shiny":false},{"name":"vivalospride","species":"Darmanitan-Zen","item":"Heavy Duty Boots","ability":"Regenerator","moves":["Teleport","Toxic","Future Sight","DRIP BAYLESS"],"nature":"Modest","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":252,"spd":0,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false}]"#.as_bytes()),
-            Some("annika".as_bytes()),
-            Some("1400".as_bytes()),
-            Some(r#"[{"name":"gallant's pear","species":"Orbeetle","item":"Life Orb","ability":"Armor Time","moves":["Bug Buzz","Nasty Plot","Snipe Shot","King Giri Giri Slash"],"nature":"Timid","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":0,"spd":0,"spe":252},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Akir","species":"Forretress","item":"Leftovers","ability":"Fortifications","moves":["Stealth Rock","Rapid Spin","U-turn","Ravelin"],"nature":"Impish","gender":"M","evs":{"hp":248,"atk":0,"def":252,"spa":0,"spd":0,"spe":8},"ivs":{"hp":31,"atk":31,"def":31,"spa":0,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"brouha","species":"Mantine","item":"Leftovers","ability":"Turbulence","moves":["Scald","Recover","Haze","Kinetosis"],"nature":"Calm","gender":"M","evs":{"hp":248,"atk":0,"def":8,"spa":0,"spd":252,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"Kalalokki","species":"Wingull","item":"Kalalokkium Z","ability":"Magic Guard","moves":["Tailwind","Healing Wish","Encore","Blackbird"],"nature":"Timid","gender":"M","evs":{"hp":0,"atk":0,"def":0,"spa":252,"spd":4,"spe":252},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false},{"name":"OM~!","species":"Glastrier","item":"Heavy Duty Boots","ability":"Filter","moves":["Stealth Rock","Recover","Earthquake","OM Zoom"],"nature":"Relaxed","gender":"M","evs":{"hp":252,"atk":0,"def":252,"spa":0,"spd":4,"spe":0},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":0},"level":100,"happiness":255,"shiny":false},{"name":"vivalospride","species":"Darmanitan-Zen","item":"Heavy Duty Boots","ability":"Regenerator","moves":["Teleport","Toxic","Future Sight","DRIP BAYLESS"],"nature":"Modest","gender":"M","evs":{"hp":252,"atk":0,"def":4,"spa":252,"spd":0,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"level":100,"happiness":255,"shiny":false}]"#.as_bytes()),
-            Some("rust haters".as_bytes()),
-            Some("annika".as_bytes()),
-        ];
+        static ref SAMPLE_JSON: &'static str = r#"{"winner":"Annika","seed":[1,1,1,1],"turns":2,"p1":"Annika","p2":"Rust Haters","p1team":[{"name":"Rotom","species":"Rotom-Fan","gender":"N","shiny":false,"gigantamax":false,"level":84,"moves":["airslash","voltswitch","willowisp","thunderbolt"],"ability":"Levitate","evs":{"hp":85,"atk":0,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"item":"Heavy-Duty Boots"},{"name":"Regirock","species":"Regirock","gender":"N","shiny":false,"gigantamax":false,"level":85,"moves":["curse","rockslide","rest","bodypress"],"ability":"Sturdy","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Chesto Berry"},{"name":"Conkeldurr","species":"Conkeldurr","gender":"","shiny":false,"gigantamax":false,"level":80,"moves":["facade","knockoff","machpunch","drainpunch"],"ability":"Guts","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Flame Orb"},{"name":"Reuniclus","species":"Reuniclus","gender":"","shiny":false,"gigantamax":false,"level":84,"moves":["trickroom","focusblast","psychic","shadowball"],"ability":"Magic Guard","evs":{"hp":85,"atk":0,"def":85,"spa":85,"spd":85,"spe":0},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":0},"item":"Life Orb"},{"name":"Incineroar","species":"Incineroar","gender":"","shiny":false,"gigantamax":false,"level":80,"moves":["knockoff","uturn","earthquake","flareblitz"],"ability":"Intimidate","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Choice Scarf"},{"name":"Miltank","species":"Miltank","gender":"F","shiny":false,"gigantamax":false,"level":84,"moves":["healbell","bodyslam","earthquake","milkdrink"],"ability":"Sap Sipper","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Leftovers"}],"p2team":[{"name":"Drednaw","species":"Drednaw","gender":"","shiny":false,"gigantamax":false,"level":84,"moves":["stoneedge","swordsdance","superpower","liquidation"],"ability":"Swift Swim","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Life Orb"},{"name":"Pinsir","species":"Pinsir","gender":"","shiny":false,"gigantamax":false,"level":84,"moves":["closecombat","stoneedge","xscissor","knockoff"],"ability":"Moxie","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Choice Scarf"},{"name":"Pikachu","species":"Pikachu-Sinnoh","gender":"","shiny":false,"gigantamax":false,"level":92,"moves":["knockoff","volttackle","voltswitch","irontail"],"ability":"Lightning Rod","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Light Ball"},{"name":"Latios","species":"Latios","gender":"M","shiny":false,"gigantamax":false,"level":78,"moves":["dracometeor","calmmind","psyshock","roost"],"ability":"Levitate","evs":{"hp":85,"atk":0,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"item":"Soul Dew"},{"name":"Entei","species":"Entei","gender":"N","shiny":false,"gigantamax":false,"level":78,"moves":["flareblitz","stoneedge","extremespeed","sacredfire"],"ability":"Inner Focus","evs":{"hp":85,"atk":85,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":31,"def":31,"spa":31,"spd":31,"spe":31},"item":"Choice Band"},{"name":"Exeggutor","species":"Exeggutor-Alola","gender":"","shiny":false,"gigantamax":false,"level":86,"moves":["gigadrain","flamethrower","dracometeor","leafstorm"],"ability":"Frisk","evs":{"hp":85,"atk":0,"def":85,"spa":85,"spd":85,"spe":85},"ivs":{"hp":31,"atk":0,"def":31,"spa":31,"spd":31,"spe":31},"item":"Choice Specs"}],"score":[0,2],"inputLog":[">lol you thought i'd leak someone's real input log"],"log":["|j|☆Annika","|j|☆Rust Hater","|player|p1|Annika|cynthia|1400","|player|p2|Rust Hater|cynthia|1100","|teamsize|p1|6","|teamsize|p2|6","|gametype|singles","|gen|8","|tier|[Gen 8] Random Battle","|rated|"],"p1rating":{"entryid":"75790599","userid":"annika","w":"4","l":4,"t":"0","gxe":46.8,"r":1516.9377700433,"rd":121.36211247153,"rptime":1632906000,"rpr":1474.7452159936,"rprd":115.09180605287,"elo":1400.4859871929,"col1":8,"oldelo":"1057.7590112468"},"p2rating":{"entryid":"75790599","userid":"rusthater","w":"4","l":5,"t":"0","gxe":41.8,"r":"1516.9377700433","rd":"121.36211247153","rptime":"1632906000","rpr":1434.9434039083,"rprd":109.84367373045,"elo":1130.7522733629,"col1":9,"oldelo":"1040.4859871929"},"endType":"normal","timestamp":"Wed Nov 1 1970 00:00:01 GMT-0400 (Eastern Daylight Time)","roomid":"battle-gen8randombattle-1","format":"gen8randombattle", "comment": "if you're curious - this is my own rating info & teams from my battles - no violation of privacy here!"}"#;
     }
 
     fn add_records(stats: &mut Stats, num: u32) {
