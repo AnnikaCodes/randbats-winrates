@@ -1,6 +1,6 @@
 [package]
 name = "randbats-winrates"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Annika <annika0uwu@gmail.com>"]
 license = "MIT"
 description = "Tool to determine winrates for Pokémon Showdown random battles"
