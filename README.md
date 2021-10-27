@@ -1,4 +1,2 @@
 # randbats-winrates
-Usage stats for Pokémon Showdown random battles
-
-Now with better performance thanks to GJSON and concurrency!
+This project is deprecated; please use [psbattletools](https://crates.io/crates/psbattletools) instead.
